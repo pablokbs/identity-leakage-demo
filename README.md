@@ -1,119 +1,138 @@
 # Identity Leakage Demo — KubeCon Talk
 
-Live demo for the talk **"When the Agent Lost Its Patience: Securing Cloud-Native AI Workflows Against Identity Leakage"**.
+Live demo for **“When the Agent Lost Its Patience: Securing Cloud-Native AI Workflows Against Identity Leakage.”**
 
-The demo proves a single, scary claim: **the scope of a Personal Access Token is a ceiling on what the identity behind it can do — not a permission in itself**. So if the identity owning the token is a repository Admin, even a fine-grained PAT scoped to "just this repo" can bypass branch protection, because the user identity behind the token is allowed to bypass.
+The demo shows that token permissions and identity permissions are separate inputs to authorization:
 
-The same PAT, used by a Write-only identity, is blocked. The only thing that changes between the two runs is the **role of the user**, not the token.
+- A narrow token owned by a repository **Admin** can merge an unapproved PR when classic branch protection implicitly exempts administrators.
+- An equivalent token owned by a **Writer** is blocked by the same classic rule.
+- A repository ruleset with no bypass actors removes that implicit exemption.
+- The agent token has no `Administration` permission, so it cannot modify or delete the ruleset that constrains it.
 
-## Talk flow
+## Threat model
 
-| Step | Script | Purpose |
+Both demo tokens can update repository contents and pull requests. Neither token can administer repository settings. The important difference is the role of the identity that owns each token.
+
+The remediation has two parts:
+
+1. Enforce the review requirement with a ruleset whose `bypass_actors` list is empty.
+2. Keep `Administration` permission out of the token held by the agent.
+
+The repository owner uses a separate setup token to prepare and clean the lab.
+
+## One-time preparation
+
+Before the talk:
+
+1. Create and initialize a reusable public test repository with a `main` branch.
+2. Add two test accounts and wait for both invitations to be accepted:
+   - one account with repository Admin role;
+   - one account with Writer role.
+3. Create equivalent narrow tokens for those accounts:
+   - Contents: read and write;
+   - Pull requests: read and write;
+   - Metadata: read-only;
+   - **no Administration permission**.
+4. Create a separate owner/setup token that can configure protection and rulesets.
+5. Copy `00-config.sh.example` to `00-config.sh` and fill in the values.
+
+The scripts reuse the repository and collaborators. They do not create the repository or send invitations during the live demo.
+
+## Languages
+
+English is the default:
+
+```bash
+make setup
+./02-attack-admin.sh
+```
+
+Select Spanish with an environment variable or script flag:
+
+```bash
+make DEMO_LANG=es setup
+./02-attack-admin.sh --lang es
+```
+
+CLI flags take precedence over `DEMO_LANG`.
+
+## Presentation mode
+
+Presentation mode prints GitHub links and pauses at useful visual checkpoints:
+
+```bash
+make DEMO_LANG=es DEMO_PRESENT=1 setup
+./02-attack-admin.sh --lang es --present
+```
+
+Without presentation mode, the same scripts run without waiting for Enter.
+
+## Live flow
+
+Run each command separately:
+
+```bash
+make DEMO_LANG=es DEMO_PRESENT=1 setup
+make DEMO_LANG=es DEMO_PRESENT=1 attack-admin
+make DEMO_LANG=es DEMO_PRESENT=1 attack-writer
+make DEMO_LANG=es DEMO_PRESENT=1 remediate
+make DEMO_LANG=es DEMO_PRESENT=1 reattack
+make DEMO_LANG=es reset
+```
+
+The flow is intentionally staged:
+
+| Step | What happens | GitHub UI checkpoint |
 | --- | --- | --- |
-| Setup | `01-setup.sh` | Create a test repo, add two collaborators, configure classic branch protection on `main` (1 required review, admins may bypass by default), and open an unapproved PR. |
-| Attack | `02-attack-admin.sh` | Use a fine-grained PAT belonging to the **Admin** user to try to merge the unapproved PR. **The merge succeeds** despite the rule. |
-| Attack | `02-attack-writer.sh` | Use a fine-grained PAT belonging to the **Writer** user to try to merge the same PR. **The merge fails**. Same PAT scopes, different identity, different outcome. |
-| Remediate | `03-remediate.sh` | Delete the classic branch protection rule and replace it with a repository **Ruleset** whose `bypass_actors` list is empty. |
-| Re-attack | `03-attack-admin-ruleset.sh` | Use the Admin token again on the same PR. **The merge now fails** — the structural fix holds even for admins. |
-| Reset | `99-reset.sh` | Deletes the test repo. Safe to run between takes. |
+| Setup | Verify the reusable repo and collaborators, apply classic protection, open an unapproved PR | Access, branch settings, PR |
+| Admin attack | Admin token merges without approval; classic protection remains configured | PR and branch settings |
+| Writer comparison | A fresh equivalent PR is rejected for the Writer identity | Open blocked PR |
+| Remediation | Replace classic protection with a no-bypass ruleset | Ruleset settings and effective rules |
+| Admin re-attack | The exact same `gh pr merge --admin` operation is rejected; the token cannot change the ruleset | Effective rules and blocked PR |
+| Cleanup | Close PRs, delete `demo/*` branches, and remove demo protections while preserving the repo and collaborators | Repository home |
 
-## Manual one-time setup before the talk
+`make all` is useful for automation. For a talk, use the individual commands so you control every pause.
 
-You need three things:
+## Files
 
-1. **A test repository** under your own GitHub user or a dedicated test org.
-   - It must be empty so the setup script can push a starter commit to `main`.
-   - It must allow you to add two collaborators.
-
-2. **Two test GitHub accounts**.
-   - Both accounts must be added to the test repository as collaborators.
-   - `pelado-admin` must be invited with **Admin** role.
-   - `pelado-writer` must be invited with **Write** role (or **Maintain** for a personal repo, but Write is preferred for parity with orgs).
-   - Both accounts must accept the invitation before the talk.
-
-3. **Two fine-grained Personal Access Tokens**.
-   - Generate them at `https://github.com/settings/personal-access-tokens/new`.
-   - **Repository access:** select only your test repository.
-   - **Permissions:** for both tokens, enable exactly:
-     - **Contents:** Read and write
-     - **Pull requests:** Read and write
-     - **Metadata:** Read-only (this is auto-selected)
-   - **Expiration:** 1 day is fine for the talk window.
-   - The **only difference** between the two tokens is the *user* that owns them. Both have identical scopes.
-
-Save the tokens somewhere safe (1Password, Bitwarden) until the talk. They will be pasted as environment variables in the terminal, not stored in files.
-
-## Files in this directory
-
-```
+```text
 identity-leakage-demo/
-├── README.md                  # this file
-├── lib.sh                     # shared helpers, safety checks, color helpers
-├── 00-config.sh.example       # template; copy to 00-config.sh and fill in
-├── 01-setup.sh                # create repo, protection, PR
-├── 02-attack-admin.sh         # admin token merges unapproved PR
-├── 02-attack-writer.sh        # writer token is blocked
-├── 03-remediate.sh            # migrate to ruleset
-├── 03-attack-admin-ruleset.sh # admin blocked by ruleset
-└── 99-reset.sh                # delete test repo
+├── 00-config.sh.example
+├── 01-setup.sh
+├── 02-attack-admin.sh
+├── 02-attack-writer.sh
+├── 03-remediate.sh
+├── 03-attack-admin-ruleset.sh
+├── 99-cleanup.sh
+├── 99-delete-repo.sh
+├── lib.sh
+├── Makefile
+├── TALK-SCRIPT.md
+└── TALK-SCRIPT.es.md
 ```
 
-## First-time setup
+## Cleanup versus deletion
+
+Normal cleanup keeps the reusable repository and collaborators:
 
 ```bash
-cd identity-leakage-demo
-cp 00-config.sh.example 00-config.sh
-chmod 600 00-config.sh
-# edit 00-config.sh and fill in the values
+make reset
 ```
 
-The `00-config.sh` file contains:
+Permanent deletion is deliberately separate and requires typing `DELETE`:
 
 ```bash
-OWNER="your-github-username"          # or your org name
-REPO="identity-leakage-demo"          # the test repo to create
-TEST_ORG_GH_TOKEN="***"  # a PAT owned by YOUR account with repo admin and delete_repo scopes on the test org/user
-ADMIN_HANDLE="pelado-admin"           # the GitHub username with Admin role
-WRITER_HANDLE="pelado-writer"         # the GitHub username with Write role
-ADMIN_TOKEN="***"        # the Admin user's fine-grained PAT
-WRITER_TOKEN="***"       # the Writer user's fine-grained PAT
+make delete-repo
 ```
-
-The `TEST_ORG_GH_TOKEN` is only used by `01-setup.sh` and `99-reset.sh` to create and delete the test repo and configure protection. It belongs to **your** account, which must already have Admin rights over the test org or user.
-
-The `ADMIN_TOKEN` and `WRITER_TOKEN` are the tokens used by the **demo personas**. They are the ones that prove the point. The talk uses *only* these two PATs after setup is complete.
-
-## Running the demo
-
-On stage, source the config and run each script in order:
-
-```bash
-source ./00-config.sh
-./01-setup.sh                 # creates the repo, protection and PR
-./02-attack-admin.sh          # admin PAT merges unapproved PR
-./02-attack-writer.sh         # writer PAT is blocked
-./03-remediate.sh             # installs ruleset, deletes classic rule
-./03-attack-admin-ruleset.sh  # admin PAT is now blocked too
-./99-reset.sh                 # cleans up the test repo
-```
-
-Between takes, run `99-reset.sh` followed by `01-setup.sh` to reset the world.
-
-## Safety guarantees
-
-These scripts **refuse to run** unless all of the following are true:
-
-- `OWNER` matches the regex `^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?$`
-- `REPO` matches the same regex and must not match production-like names (`prod`, `infra`, `pay`, `auth`, `users`, `billing`, `core`, `app`, `api`)
-- `OWNER/REPO` is not in your production denylist (defined in `lib.sh`)
-- `OWNER` is not the string `pablokbs` (or any other name you put in the denylist) so you cannot accidentally nuke the wrong thing
-
-If any check fails, the script exits with a loud red message and refuses to do anything.
-
-The reset script (`99-reset.sh`) requires you to type `DELETE` interactively before it will call the delete endpoint.
 
 ## Requirements
 
-- `bash` 4+
-- `curl`, `jq`
-- `gh` CLI authenticated as a user that can create repos in the org (optional, used by `01-setup.sh` as a fallback to the REST API)
+- Bash 3.2 or newer
+- `curl`, `jq`, `base64`, `gh`
+- Network access to `api.github.com` and `github.com`
+
+## Safety
+
+Every script validates the configured owner, repository name, token presence, and denylist before changing GitHub state. Keep production owners and repositories in the denylist in `lib.sh`.
+
+Never show, print, commit, or pass the tokens as command-line arguments. `00-config.sh` is ignored by Git.

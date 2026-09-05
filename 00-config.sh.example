@@ -4,13 +4,12 @@
 
 # === Identity behind which the test repo lives ===
 OWNER=""            # your GitHub username or org name (e.g. "pablokbs")
-REPO=""             # the name of the test repo to create (e.g. "identity-leakage-demo")
+REPO=""             # reusable, pre-created test repo (e.g. "identity-leakage-demo")
 
 # === Token belonging to YOUR account ===
-# Used only by 01-setup.sh and 99-reset.sh to create/delete the repo
-# and to configure protection. Must have repo admin + delete_repo scopes
-# on the OWNER above. Classic PAT is fine for personal repos; for orgs
-# this must be a PAT or GitHub App with admin rights.
+# Used by setup, remediation, and cleanup to create demo branches/PRs and
+# configure protection. This is deliberately separate from the credentials
+# held by the simulated agent. Permanent deletion also requires delete_repo.
 TEST_ORG_GH_TOKEN=""
 
 # === Two demo personas ===
@@ -23,6 +22,7 @@ WRITER_HANDLE=""    # account with Write (not Admin) role on the repo
 #   - Contents: Read and write
 #   - Pull requests: Read and write
 #   - Metadata: Read-only (auto-selected)
+#   - Administration: NO ACCESS
 # The ONLY difference between the two tokens is the user that owns them.
 ADMIN_TOKEN=""      # fine-grained PAT of ADMIN_HANDLE
 WRITER_TOKEN=""     # fine-grained PAT of WRITER_HANDLE

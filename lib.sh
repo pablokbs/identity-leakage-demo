@@ -18,6 +18,135 @@ else
   RED="" GREEN="" YELLOW="" BLUE="" CYAN="" BOLD="" RESET=""
 fi
 
+# -------- Language and presentation mode --------
+
+# English is the default so the scripts remain suitable for an international
+# audience. Both settings can be supplied through environment variables or
+# command-line flags. CLI flags take precedence.
+DEMO_LANG="${DEMO_LANG:-en}"
+DEMO_PRESENT="${DEMO_PRESENT:-0}"
+COMMON_ARGS=()
+
+parse_common_args() {
+  COMMON_ARGS=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --lang)
+        [[ $# -ge 2 ]] || die "--lang requires 'en' or 'es'"
+        DEMO_LANG="$2"
+        shift 2
+        ;;
+      --lang=*)
+        DEMO_LANG="${1#*=}"
+        shift
+        ;;
+      --present)
+        DEMO_PRESENT=1
+        shift
+        ;;
+      --no-present)
+        DEMO_PRESENT=0
+        shift
+        ;;
+      --)
+        shift
+        while [[ $# -gt 0 ]]; do
+          COMMON_ARGS+=("$1")
+          shift
+        done
+        ;;
+      *)
+        COMMON_ARGS+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  case "$DEMO_LANG" in
+    en|es) ;;
+    *) die "unsupported language '$DEMO_LANG'; use 'en' or 'es'" ;;
+  esac
+
+  case "$DEMO_PRESENT" in
+    1|true|TRUE|yes|YES) DEMO_PRESENT=1 ;;
+    0|false|FALSE|no|NO|"") DEMO_PRESENT=0 ;;
+    *) die "DEMO_PRESENT must be 1 or 0" ;;
+  esac
+}
+
+localized() {
+  local english="$1" spanish="$2"
+  if [[ "$DEMO_LANG" == "es" ]]; then
+    printf '%s' "$spanish"
+  else
+    printf '%s' "$english"
+  fi
+}
+
+say_l() {
+  localized "$1" "$2"
+  printf '\n'
+}
+
+note_l() {
+  note "$(localized "$1" "$2")"
+}
+
+ok_l() {
+  ok "$(localized "$1" "$2")"
+}
+
+warn_l() {
+  warn "$(localized "$1" "$2")"
+}
+
+die_l() {
+  die "$(localized "$1" "$2")"
+}
+
+section_l() {
+  local number="$1" english="$2" spanish="$3"
+  echo ""
+  echo "${BOLD}[$number] $(localized "$english" "$spanish")${RESET}"
+  echo ""
+}
+
+show_link_l() {
+  local url="$1" english="$2" spanish="$3"
+  echo ""
+  printf '  %s:\n' "$(localized "$english" "$spanish")"
+  printf '  %s\n' "$url"
+}
+
+present_pause_l() {
+  [[ "$DEMO_PRESENT" == "1" ]] || return 0
+  echo ""
+  if [[ -t 0 ]]; then
+    local prompt
+    prompt=$(localized "Press Enter to continue..." "Presioná Enter para continuar...")
+    read -r -p "  $prompt" _
+  else
+    warn_l \
+      "presentation pause skipped because stdin is not interactive" \
+      "se omitió la pausa porque la entrada no es interactiva"
+  fi
+  echo ""
+}
+
+repo_url() { printf 'https://github.com/%s/%s' "$1" "$2"; }
+access_url() { printf 'https://github.com/%s/%s/settings/access' "$1" "$2"; }
+branches_url() { printf 'https://github.com/%s/%s/settings/branches' "$1" "$2"; }
+rules_settings_url() { printf 'https://github.com/%s/%s/settings/rules' "$1" "$2"; }
+effective_rules_url() { printf 'https://github.com/%s/%s/rules?ref=refs%%2Fheads%%2Fmain' "$1" "$2"; }
+pr_url() { printf 'https://github.com/%s/%s/pull/%s' "$1" "$2" "$3"; }
+commits_url() { printf 'https://github.com/%s/%s/commits/main' "$1" "$2"; }
+
+show_next_l() {
+  local command="$1"
+  echo ""
+  printf '  %s: %s\n' "$(localized "next" "siguiente")" "$command"
+}
+
 # -------- Denylist: never touch these from the demo scripts --------
 
 # Add any repo or owner here to prevent the scripts from ever touching
@@ -65,22 +194,30 @@ banner() {
 
 require_bin() {
   for bin in "$@"; do
-    command -v "$bin" >/dev/null 2>&1 || die "missing required binary: $bin"
+    command -v "$bin" >/dev/null 2>&1 || die_l \
+      "missing required binary: $bin" \
+      "falta el binario requerido: $bin"
   done
 }
 
 validate_name() {
   local value="$1" label="$2"
   [[ "$value" =~ ^[A-Za-z0-9]([A-Za-z0-9._-]{0,99}[A-Za-z0-9])?$ ]] \
-    || die "$label '$value' is not a safe name (allowed: alphanumeric, '.', '_', '-')"
+    || die_l \
+      "$label '$value' is not a safe name (allowed: alphanumeric, '.', '_', '-')" \
+      "$label '$value' no es un nombre seguro (permitidos: alfanuméricos, '.', '_', '-')"
 }
 
 # Safety gate. Returns 0 only if OWNER/REPO looks safe to operate on.
 safety_gate() {
   require_bin curl jq
 
-  [[ -n "${OWNER:-}" ]] || die "OWNER is empty; copy 00-config.sh.example to 00-config.sh"
-  [[ -n "${REPO:-}" ]]  || die "REPO is empty; copy 00-config.sh.example to 00-config.sh"
+  [[ -n "${OWNER:-}" ]] || die_l \
+    "OWNER is empty; configure 00-config.sh" \
+    "OWNER está vacío; configurá 00-config.sh"
+  [[ -n "${REPO:-}" ]] || die_l \
+    "REPO is empty; configure 00-config.sh" \
+    "REPO está vacío; configurá 00-config.sh"
 
   validate_name "$OWNER" "OWNER"
   validate_name "$REPO"  "REPO"
@@ -88,7 +225,9 @@ safety_gate() {
   for denied in "${DENY_OWNERS[@]+"${DENY_OWNERS[@]}"}"; do
     [[ -z "$denied" ]] && continue
     if [[ "$OWNER" == "$denied" ]]; then
-      die "OWNER '$OWNER' is in the safety denylist. Refusing to run."
+      die_l \
+        "OWNER '$OWNER' is in the safety denylist. Refusing to run." \
+        "OWNER '$OWNER' está en la lista de seguridad. Se rechaza la ejecución."
     fi
   done
 
@@ -96,12 +235,16 @@ safety_gate() {
   for denied in "${DENY_REPOS[@]+"${DENY_REPOS[@]}"}"; do
     [[ -z "$denied" ]] && continue
     if [[ "$full" == "$denied" ]]; then
-      die "$full is in the safety denylist. Refusing to run."
+      die_l \
+        "$full is in the safety denylist. Refusing to run." \
+        "$full está en la lista de seguridad. Se rechaza la ejecución."
     fi
   done
 
   if [[ "$REPO" =~ $PROD_NAME_PATTERNS ]]; then
-    die "REPO '$REPO' matches a production-like name. Refusing to run on this name."
+    die_l \
+      "REPO '$REPO' looks like a production name. Refusing to run." \
+      "REPO '$REPO' parece un nombre de producción. Se rechaza la ejecución."
   fi
 
   for token_var in TEST_ORG_GH_TOKEN ADMIN_TOKEN WRITER_TOKEN; do
@@ -114,14 +257,18 @@ safety_gate() {
       WRITER_TOKEN)      token="${WRITER_TOKEN:-}" ;;
     esac
     if [[ -z "$token" ]]; then
-      die "$token_var is empty; export it before running the demo (do not commit it)"
+      die_l \
+        "$token_var is empty; configure it before running the demo" \
+        "$token_var está vacío; configuralo antes de ejecutar la demo"
     fi
     if [[ ${#token} -lt 20 ]]; then
-      die "$token_var looks too short (length=${#token}) to be a real GitHub token"
+      die_l \
+        "$token_var looks too short (length=${#token}) to be a GitHub token" \
+        "$token_var parece demasiado corto (longitud=${#token}) para ser un token de GitHub"
     fi
   done
 
-  ok "safety gate passed for $full"
+  ok_l "safety gate passed for $full" "control de seguridad aprobado para $full"
 }
 
 # Authenticated GitHub API call. Echoes the HTTP status on stderr for
@@ -171,7 +318,7 @@ pp_json() {
 # Try to delete a repo idempotently. Used by 99-delete-repo.sh.
 delete_repo_safe() {
   local owner="$1" repo="$2" token="$3"
-  warn "deleting repository $owner/$repo"
+  warn_l "deleting repository $owner/$repo" "eliminando el repositorio $owner/$repo"
   gh_api_no_body DELETE "/repos/$owner/$repo" "$token" || true
 }
 
@@ -206,13 +353,13 @@ delete_rulesets_by_name() {
   ids=$(gh_api GET "/repos/$owner/$repo/rulesets" "$token" 2>/dev/null \
     | jq --arg n "$name" -r '.[] | select(.name == $n) | .id' 2>/dev/null || true)
   if [[ -z "$ids" ]]; then
-    warn "no rulesets named '$name' to delete"
+    warn_l "no rulesets named '$name' to delete" "no hay rulesets llamados '$name' para eliminar"
     return 0
   fi
   local id
   for id in $ids; do
     gh_api_no_body DELETE "/repos/$owner/$repo/rulesets/$id" "$token" || true
-    ok "deleted ruleset $id ($name)"
+    ok_l "deleted ruleset $id ($name)" "ruleset $id ($name) eliminado"
   done
 }
 
@@ -225,13 +372,71 @@ close_open_prs() {
     [[ -z "$pr_id" ]] && continue
     gh_api_no_body PATCH "/repos/$owner/$repo/pulls/$pr_id" "$token" \
       --data '{"state":"closed"}' || true
-    ok "closed PR #$pr_id"
+    ok_l "closed PR #$pr_id" "PR #$pr_id cerrado"
   done
 }
 
+# Delete only transient branches created by this demo. Main and any branch
+# outside the explicit demo/ namespace are never touched.
+delete_demo_branches() {
+  local owner="$1" repo="$2" token="$3"
+  local branch
+  for branch in $(gh_api GET "/repos/$owner/$repo/branches?per_page=100" "$token" 2>/dev/null \
+                    | jq -r '.[].name | select(startswith("demo/"))' 2>/dev/null || true); do
+    [[ -z "$branch" ]] && continue
+    gh_api_no_body DELETE "/repos/$owner/$repo/git/refs/heads/$branch" "$token" || true
+    ok_l "deleted transient branch $branch" "rama transitoria $branch eliminada"
+  done
+}
+
+# Create a fresh demo branch, one trivial commit, and an unapproved PR using
+# the GitHub API. Results are returned in DEMO_PR_NUMBER and DEMO_PR_BRANCH.
+# This avoids putting credentials in git remote URLs or command arguments.
+create_demo_pr() {
+  local owner="$1" repo="$2" token="$3" branch_prefix="$4"
+  local main_sha branch filename content ref_payload commit_payload pr_payload response
+
+  require_bin base64
+  main_sha=$(gh_api GET "/repos/$owner/$repo/git/ref/heads/main" "$token" \
+    | jq -r '.object.sha // empty')
+  [[ -n "$main_sha" ]] || die_l \
+    "could not resolve the main branch; initialize the repository first" \
+    "no se pudo encontrar la rama main; inicializá primero el repositorio"
+
+  branch="${branch_prefix}-${RANDOM}-${RANDOM}"
+  ref_payload=$(jq -n --arg ref "refs/heads/$branch" --arg sha "$main_sha" \
+    '{ref:$ref, sha:$sha}')
+  gh_api POST "/repos/$owner/$repo/git/refs" "$token" \
+    --data "$ref_payload" >/dev/null
+
+  filename="change-${RANDOM}-${RANDOM}.txt"
+  content=$(printf 'trivially small change for the identity-leakage demo\n' \
+    | base64 | tr -d '\r\n')
+  commit_payload=$(jq -n \
+    --arg message "Trivial change for identity-leakage demo" \
+    --arg content "$content" \
+    --arg branch "$branch" \
+    '{message:$message, content:$content, branch:$branch}')
+  gh_api PUT "/repos/$owner/$repo/contents/$filename" "$token" \
+    --data "$commit_payload" >/dev/null
+
+  pr_payload=$(jq -n \
+    --arg title "Trivial change for identity-leakage demo" \
+    --arg base "main" \
+    --arg head "$branch" \
+    --arg body "An intentionally unapproved PR for the identity-leakage demo." \
+    '{title:$title, base:$base, head:$head, body:$body, draft:false}')
+  response=$(gh_api POST "/repos/$owner/$repo/pulls" "$token" --data "$pr_payload")
+  DEMO_PR_NUMBER=$(printf '%s' "$response" | jq -r '.number // empty')
+  DEMO_PR_BRANCH="$branch"
+  [[ -n "$DEMO_PR_NUMBER" ]] || die_l \
+    "could not create the demo PR" \
+    "no se pudo crear el PR de la demo"
+}
+
 # Apply the classic branch protection rule used throughout the demo:
-# 1 required review. Keep enforce_admins=false so the rule itself does not
-# explicitly block admins from mutating it.
+# one required review with enforce_admins=false, so Admin identities are not
+# subject to the rule when they update the protected branch.
 apply_classic_protection() {
   local owner="$1" repo="$2" token="$3"
   local payload
@@ -245,18 +450,24 @@ apply_classic_protection() {
     },
     restrictions: null
   }')
-  note "applying classic branch protection on main (1 review)"
+  note_l \
+    "Applying classic branch protection on main (one review)" \
+    "Aplicando branch protection clásica sobre main (una aprobación)"
   gh_api PUT "/repos/$owner/$repo/branches/main/protection" "$token" \
     --data "$payload" >/dev/null
-  ok "classic branch protection applied"
+  ok_l "classic branch protection applied" "branch protection clásica aplicada"
 }
 
 # Remove classic branch protection from main.
 remove_classic_protection() {
   local owner="$1" repo="$2" token="$3"
-  note "removing classic branch protection on main"
+  note_l \
+    "Removing classic branch protection from main" \
+    "Eliminando branch protection clásica de main"
   gh_api_no_body DELETE "/repos/$owner/$repo/branches/main/protection" "$token" \
-    || warn "classic protection was not set; continuing"
+    || warn_l \
+      "classic protection was not set; continuing" \
+      "la protección clásica no estaba configurada; continuando"
 }
 
 # Wait for a repo to exist. Returns 0 once 200 OK is observed.
@@ -269,7 +480,9 @@ wait_for_repo() {
     fi
     sleep 2
   done
-  die "repository $owner/$repo did not appear after 60 seconds"
+  die_l \
+    "repository $owner/$repo did not appear after 60 seconds" \
+    "el repositorio $owner/$repo no apareció después de 60 segundos"
 }
 
 # Wait for a PR to be open.
@@ -283,5 +496,7 @@ wait_for_pr() {
     [[ "$state" == "open" ]] && return 0
     sleep 2
   done
-  die "PR #$pr did not become 'open' after 60 seconds"
+  die_l \
+    "PR #$pr did not become open after 60 seconds" \
+    "el PR #$pr no quedó abierto después de 60 segundos"
 }

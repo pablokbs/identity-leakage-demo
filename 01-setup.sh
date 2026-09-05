@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
-# 01-setup.sh
-# Creates the test repository, invites the two collaborators, configures
-# classic branch protection on main (1 required review, admins may bypass
-# by default), and opens an unapproved pull request.
-#
-# Idempotent: safe to run multiple times. If the repo already exists it
-# is kept as-is. The PR is always closed and re-opened.
+# Prepare the reusable repository for one demo take.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,167 +8,89 @@ source "$SCRIPT_DIR/lib.sh"
 # shellcheck source=00-config.sh
 source "$SCRIPT_DIR/00-config.sh"
 
-banner "01 - Setup repo, protection, unapproved PR"
+parse_common_args "$@"
+set -- ${COMMON_ARGS[@]+"${COMMON_ARGS[@]}"}
+[[ $# -eq 0 ]] || die_l \
+  "unexpected argument: $1" \
+  "argumento inesperado: $1"
+
+banner "$(localized \
+  "01 — Prepare classic protection and an unapproved PR" \
+  "01 — Preparar protección clásica y un PR sin aprobación")"
 
 safety_gate
-require_bin git
 
-# --- Step 1: create the repo if it does not exist ---
-
-if gh_api_no_body GET "/repos/$OWNER/$REPO" "$TEST_ORG_GH_TOKEN"; then
-  warn "$OWNER/$REPO already exists; will reuse it"
-else
-  note "creating repository $OWNER/$REPO"
-  CREATE_PAYLOAD=$(jq -n \
-    --arg name "$REPO" \
-    --arg desc "Live demo for identity-leakage talk" \
-    --arg homepage "" \
-    '{name:$name, description:$desc, homepage:$homepage, private:false, auto_init:true}')
-  gh_api_no_body POST "/user/repos" "$TEST_ORG_GH_TOKEN" \
-    --data "$CREATE_PAYLOAD" \
-    || die "failed to create repo $OWNER/$REPO"
-fi
-
-wait_for_repo "$OWNER" "$REPO" "$TEST_ORG_GH_TOKEN"
-
-# --- Step 2: ensure collaborators exist and have accepted invitations ---
-
-invite_user() {
-  local handle="$1" role="$2"
-  local status
-  status=$(curl -sS -o /dev/null -w '%{http_code}' \
-    -X PUT \
-    -H "Accept: application/vnd.github+json" \
-    -H "X-GitHub-Api-Version: 2022-11-28" \
-    -H "Authorization: Bearer ${TEST_ORG_GH_TOKEN}" \
-    "https://api.github.com/repos/$OWNER/$REPO/collaborators/$handle" \
-    -d "$(jq -n --arg r "$role" '{permission:$r}')" || true)
-  echo "${BLUE}invite $handle as $role${RESET} ${YELLOW}->${RESET} $status" >&2
-}
+section_l 1 "Verify the reusable demo repository" "Verificar el repositorio reutilizable"
+note_l \
+  "The repository and collaborators are one-time prerequisites; this script never creates or deletes them." \
+  "El repositorio y los colaboradores se preparan una sola vez; este script nunca los crea ni los elimina."
+gh_api_no_body GET "/repos/$OWNER/$REPO" "$TEST_ORG_GH_TOKEN" \
+  || die_l \
+    "repository $OWNER/$REPO does not exist; create and initialize it before the demo" \
+    "el repositorio $OWNER/$REPO no existe; crealo e inicializalo antes de la demo"
+ok_l "reusing repository $OWNER/$REPO" "reutilizando el repositorio $OWNER/$REPO"
 
 ensure_collaborator() {
   local handle="$1" role="$2"
   if is_collaborator "$OWNER" "$REPO" "$handle" "$TEST_ORG_GH_TOKEN"; then
-    ok "$handle is already an active collaborator ($role)"
+    ok_l "$handle is an active collaborator ($role)" "$handle es un colaborador activo ($role)"
     return 0
   fi
   if has_pending_invitation "$OWNER" "$REPO" "$handle" "$TEST_ORG_GH_TOKEN"; then
-    warn "$handle has a pending invitation ($role) — ask them to accept before attacking"
-    return 0
+    die_l \
+      "$handle still has a pending invitation ($role); accept it before the demo" \
+      "$handle todavía tiene una invitación pendiente ($role); aceptala antes de la demo"
   fi
-  note "inviting $handle as $role"
-  invite_user "$handle" "$role"
+  die_l \
+    "$handle is not an active collaborator with the expected $role role" \
+    "$handle no es un colaborador activo con el rol esperado $role"
 }
 
-note "checking collaborators on $OWNER/$REPO"
+section_l 2 "Verify the two identities" "Verificar las dos identidades"
+say_l \
+  "The Admin and Writer accounts must already have accepted access to the repository." \
+  "Las cuentas Admin y Writer ya deben haber aceptado el acceso al repositorio."
 ensure_collaborator "$ADMIN_HANDLE" admin
 ensure_collaborator "$WRITER_HANDLE" push
+show_link_l "$(access_url "$OWNER" "$REPO")" \
+  "Open repository access in GitHub" \
+  "Abrir el acceso al repositorio en GitHub"
+present_pause_l
 
-# --- Step 3: seed an initial commit on main so the repo is usable ---
-
-WORKDIR=$(mktemp -d)
-trap 'rm -rf "$WORKDIR"' EXIT
-
-if ! gh_api_no_body GET "/repos/$OWNER/$REPO/contents/README.md" "$TEST_ORG_GH_TOKEN"; then
-  note "seeding README.md on main"
-  cat > "$WORKDIR/README.md" <<README_EOF
-# $REPO
-
-Live demo for the Identity Leakage talk.
-
-This repo intentionally has weak protections to demonstrate how a token
-held by an Admin identity can bypass branch protection rules.
-README_EOF
-  cd "$WORKDIR"
-  git init -q
-  git checkout -q -b main
-  git config user.name "demo-bot"
-  git config user.email "demo@example.com"
-  git add README.md
-  git commit -q -m "Initial commit for identity-leakage demo"
-  if ! git push -q "https://x-access-token:${TEST_ORG_GH_TOKEN}@github.com/${OWNER}/${REPO}.git" main 2>/dev/null; then
-    warn "HTTPS push failed, skipping initial commit (repo may already have content)"
-  fi
-  cd - >/dev/null
-fi
-
-# --- Step 4: apply classic branch protection on main ---
-# 1 required review. We leave bypass_actors empty to show the default
-# state where nobody has an explicit bypass.
-
+section_l 3 "Apply classic branch protection" "Aplicar branch protection clásica"
+say_l \
+  "The rule requires one approving review, but administrators are not explicitly included. That implicit exception is the vulnerable state." \
+  "La regla exige una aprobación, pero no incluye explícitamente a los administradores. Esa excepción implícita es el estado vulnerable."
+note_l \
+  "Removing any ruleset left by a previous take" \
+  "Eliminando cualquier ruleset que haya quedado de una corrida anterior"
+delete_rulesets_by_name "$OWNER" "$REPO" "main-protection" "$TEST_ORG_GH_TOKEN"
 apply_classic_protection "$OWNER" "$REPO" "$TEST_ORG_GH_TOKEN"
+show_link_l "$(branches_url "$OWNER" "$REPO")" \
+  "Inspect classic branch protection" \
+  "Ver la branch protection clásica"
+present_pause_l
 
-# --- Step 5: close any leftover PR from a previous take, then open a new one ---
-
-note "closing leftover PRs from previous takes"
-for pr_id in $(gh_api GET "/repos/$OWNER/$REPO/pulls?state=open&per_page=100" "$TEST_ORG_GH_TOKEN" \
-                | jq -r '.[].number'); do
-  gh_api_no_body PATCH "/repos/$OWNER/$REPO/pulls/$pr_id" "$TEST_ORG_GH_TOKEN" \
-    --data '{"state":"closed"}' || true
-  ok "closed PR #$pr_id"
-done
-
-note "creating a feature branch and opening a new PR"
-BRANCH="demo/unapproved-change-$RANDOM"
-
-if ! gh_api_no_body GET "/repos/$OWNER/$REPO/git/ref/heads/$BRANCH" "$TEST_ORG_GH_TOKEN"; then
-  cd "$WORKDIR"
-  if git clone -q "https://x-access-token:${TEST_ORG_GH_TOKEN}@github.com/${OWNER}/${REPO}.git" cloned 2>/dev/null; then
-    cd cloned
-    git config user.name "demo-bot"
-    git config user.email "demo@example.com"
-    git checkout -q main
-    git checkout -q -b "$BRANCH"
-    printf 'trivially small change for the identity-leakage demo\n' > "change-${RANDOM}.txt"
-    git add .
-    git commit -q -m "Trivial change for identity-leakage demo"
-    git push -q "https://x-access-token:${TEST_ORG_GH_TOKEN}@github.com/${OWNER}/${REPO}.git" "$BRANCH" || warn "push failed; PR creation may fail"
-    cd ..
-  else
-    warn "could not clone repo; the PR step will be skipped"
-  fi
-fi
-
-PR_PAYLOAD=$(jq -n \
-  --arg t 'Trivial change for identity-leakage demo' \
-  --arg b 'main' \
-  --arg h "$BRANCH" \
-  '{title:$t, base:$b, head:$h, body:"Demonstrates that an Admin token can bypass the 1-review rule.", draft:false}')
-PR_NUMBER=$(gh_api POST "/repos/$OWNER/$REPO/pulls" "$TEST_ORG_GH_TOKEN" \
-  --data "$PR_PAYLOAD" \
-  | jq -r '.number // empty')
-
-if [[ -z "$PR_NUMBER" ]]; then
-  PR_NUMBER=$(gh_api GET "/repos/$OWNER/$REPO/pulls?state=open&head=$OWNER:$BRANCH" "$TEST_ORG_GH_TOKEN" \
-    | jq -r '.[0].number // empty')
-fi
-
-[[ -n "$PR_NUMBER" ]] || die "could not create or find the demo PR"
-ok "PR #$PR_NUMBER is open on branch $BRANCH"
-
+section_l 4 "Create an unapproved pull request" "Crear un pull request sin aprobación"
+note_l "Closing leftover PRs from previous takes" "Cerrando PRs abiertos de corridas anteriores"
+close_open_prs "$OWNER" "$REPO" "$TEST_ORG_GH_TOKEN"
+note_l "Creating a feature branch and a trivial change" "Creando una rama y un cambio trivial"
+create_demo_pr "$OWNER" "$REPO" "$TEST_ORG_GH_TOKEN" "demo/unapproved-change"
+PR_NUMBER="$DEMO_PR_NUMBER"
+BRANCH="$DEMO_PR_BRANCH"
 wait_for_pr "$OWNER" "$REPO" "$PR_NUMBER" "$TEST_ORG_GH_TOKEN"
 
-note "PR is intentionally NOT approved - that is the whole point"
-echo ""
+ok_l "PR #$PR_NUMBER is open on branch $BRANCH" "el PR #$PR_NUMBER está abierto desde la rama $BRANCH"
+note_l \
+  "The PR is intentionally NOT approved. The classic rule should stop ordinary writers, but not an exempt Admin identity." \
+  "El PR está intencionalmente SIN aprobar. La regla clásica debería frenar a un Writer, pero no a una identidad Admin exceptuada."
 
-# Demo safety check: attacks will 404 if invitations are still pending.
-PENDING=$(list_pending_invitations "$OWNER" "$REPO" "$TEST_ORG_GH_TOKEN")
-if [[ -n "$PENDING" ]]; then
-  warn "some invitations are still pending"
-  echo "$PENDING"
-  echo ""
-  warn "do NOT run the attack scripts yet"
-  echo "  1. Ask the invitees to accept their GitHub email invitations."
-  echo "  2. Re-run: ./01-setup.sh"
-  echo "  3. Only then continue with: ./02-attack-admin.sh"
-  echo ""
-  exit 0
-fi
-
-ok "setup complete"
-echo "  repo:    $OWNER/$REPO"
-echo "  branch:  $BRANCH"
-echo "  PR:      #$PR_NUMBER"
 echo ""
-echo "  next:    ./02-attack-admin.sh"
-echo "           (or: make attack-admin)"
+ok_l "setup complete" "setup completo"
+echo "  repo:   $OWNER/$REPO"
+echo "  branch: $BRANCH"
+echo "  PR:     #$PR_NUMBER"
+show_link_l "$(pr_url "$OWNER" "$REPO" "$PR_NUMBER")" \
+  "Open the unapproved PR in GitHub" \
+  "Abrir el PR sin aprobación en GitHub"
+show_next_l "make attack-admin"
