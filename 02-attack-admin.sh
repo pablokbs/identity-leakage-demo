@@ -38,7 +38,7 @@ note "no approvals on PR #$PR_NUMBER — branch protection should block it"
 # First, show that a plain admin merge is rejected by modern GitHub.
 note "attempting: gh pr merge --admin (admin bypass is no longer implicit)"
 echo ""
-if GH_TOKEN="***" gh pr merge "$PR_NUMBER" --admin --squash --repo "$OWNER/$REPO" 2>&1; then
+if GH_TOKEN="$ADMIN_TOKEN" gh pr merge "$PR_NUMBER" --admin --squash --repo "$OWNER/$REPO" 2>&1; then
   echo ""
   ok "MERGE SUCCEEDED — admin bypass still works in this org/repo"
   note "this is the classic identity-leakage scenario"
@@ -60,7 +60,7 @@ remove_classic_protection "$OWNER" "$REPO" "$ADMIN_TOKEN"
 
 note "merging PR #$PR_NUMBER now that protection is gone"
 echo ""
-GH_TOKEN="***" gh pr merge "$PR_NUMBER" --squash --repo "$OWNER/$REPO" 2>&1
+GH_TOKEN="$ADMIN_TOKEN" gh pr merge "$PR_NUMBER" --squash --repo "$OWNER/$REPO" 2>&1
 echo ""
 ok "MERGE SUCCEEDED — the admin identity changed the rules to merge"
 
