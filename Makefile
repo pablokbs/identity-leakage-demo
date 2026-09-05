@@ -1,36 +1,66 @@
-.PHONY: help all setup attack-admin attack-writer remediate reattack reset delete-repo clean check
+DEMO_LANG ?= en
+DEMO_PRESENT ?= 0
+export DEMO_LANG DEMO_PRESENT
+
+.PHONY: help help-es all setup attack-admin attack-writer remediate reattack reset delete-repo clean check
+
+ifeq ($(DEMO_LANG),es)
+HELP_TITLE = Demo de Identity Leakage - comandos
+HELP_SETUP = Preparar protección clásica y un PR sin aprobación.
+HELP_ADMIN = Ejecutar el ataque con la identidad Admin.
+HELP_WRITER = Repetir el ataque con la identidad Writer.
+HELP_REMEDIATE = Migrar a un ruleset sin bypass actors.
+HELP_REATTACK = Repetir el ataque Admin bajo el ruleset.
+HELP_RESET = Limpiar el estado sin eliminar el repositorio.
+HELP_DELETE = ELIMINAR permanentemente el repositorio de prueba.
+HELP_CHECK = Validar la sintaxis de todos los scripts.
+HELP_FLOW = Flujo recomendado para la demo en vivo
+HELP_LANG = Idioma: DEMO_LANG=es o --lang es al ejecutar un script.
+HELP_PRESENT = Pausas: DEMO_PRESENT=1 o --present al ejecutar un script.
+else
+HELP_TITLE = Identity Leakage Demo - commands
+HELP_SETUP = Prepare classic protection and an unapproved PR.
+HELP_ADMIN = Run the attack with the Admin identity.
+HELP_WRITER = Repeat the attack with the Writer identity.
+HELP_REMEDIATE = Migrate to a ruleset with no bypass actors.
+HELP_REATTACK = Repeat the Admin attack under the ruleset.
+HELP_RESET = Clean demo state without deleting the repository.
+HELP_DELETE = PERMANENTLY delete the test repository.
+HELP_CHECK = Validate the syntax of every script.
+HELP_FLOW = Recommended live-demo flow
+HELP_LANG = Language: DEMO_LANG=es or --lang es on individual scripts.
+HELP_PRESENT = Pauses: DEMO_PRESENT=1 or --present on individual scripts.
+endif
 
 help:
-	@echo "Identity Leakage Demo - make targets"
+	@echo "$(HELP_TITLE)"
 	@echo ""
-	@echo "  make all          Run the full talk flow end to end."
-	@echo "  make setup        Create/reuse repo, ensure collaborators, protection and PR."
-	@echo "  make attack-admin Use the Admin PAT to merge unapproved PR."
-	@echo "  make attack-writer Use the Writer PAT (same scopes, different identity)."
-	@echo "  make remediate    Migrate from classic protection to Ruleset."
-	@echo "  make reattack     Re-run Admin attack under Ruleset (should fail)."
-	@echo "  make reset        Reset demo state: close PRs, remove protections (keeps repo)."
-	@echo "  make delete-repo  PERMANENTLY delete the test repo (requires typing DELETE)."
-	@echo "  make clean        Delete local clones and tmp files (never touches GitHub)."
-	@echo "  make check        bash -n on every script."
+	@echo "  make setup          $(HELP_SETUP)"
+	@echo "  make attack-admin   $(HELP_ADMIN)"
+	@echo "  make attack-writer  $(HELP_WRITER)"
+	@echo "  make remediate      $(HELP_REMEDIATE)"
+	@echo "  make reattack       $(HELP_REATTACK)"
+	@echo "  make reset          $(HELP_RESET)"
+	@echo "  make delete-repo    $(HELP_DELETE)"
+	@echo "  make check          $(HELP_CHECK)"
 	@echo ""
-	@echo "Recommended live-demo flow:"
-	@echo "  make setup        # run once, accept invitations, then reuse the repo"
-	@echo "  make attack-admin"
-	@echo "  make attack-writer"
-	@echo "  make remediate"
-	@echo "  make reattack"
-	@echo "  make reset        # between takes"
+	@echo "$(HELP_LANG)"
+	@echo "$(HELP_PRESENT)"
 	@echo ""
-	@echo "Before running anything, copy 00-config.sh.example to 00-config.sh,"
-	@echo "fill in real values, and source it:"
-	@echo ""
-	@echo "  cp 00-config.sh.example 00-config.sh && chmod 600 00-config.sh"
-	@echo "  set -a; source ./00-config.sh; set +a"
+	@echo "$(HELP_FLOW):"
+	@echo "  make DEMO_LANG=$(DEMO_LANG) DEMO_PRESENT=1 setup"
+	@echo "  make DEMO_LANG=$(DEMO_LANG) DEMO_PRESENT=1 attack-admin"
+	@echo "  make DEMO_LANG=$(DEMO_LANG) DEMO_PRESENT=1 attack-writer"
+	@echo "  make DEMO_LANG=$(DEMO_LANG) DEMO_PRESENT=1 remediate"
+	@echo "  make DEMO_LANG=$(DEMO_LANG) DEMO_PRESENT=1 reattack"
+	@echo "  make DEMO_LANG=$(DEMO_LANG) reset"
+
+help-es:
+	@$(MAKE) --no-print-directory DEMO_LANG=es help
 
 check:
 	@for f in lib.sh 01-setup.sh 02-attack-admin.sh 02-attack-writer.sh 03-remediate.sh 03-attack-admin-ruleset.sh 99-cleanup.sh 99-delete-repo.sh; do \
-		bash -n "$$f" && echo "  ok $$f" || echo "  FAIL $$f"; \
+		bash -n "$$f" && echo "  ok $$f" || exit 1; \
 	done
 
 setup:
@@ -55,10 +85,7 @@ delete-repo:
 	./99-delete-repo.sh
 
 clean:
-	rm -rf /tmp/_gh_body.* *.log
-	@echo "local tmp removed (no GitHub changes)"
+	rm -f /tmp/_gh_body.* ./*.log
+	@echo "local temporary files removed"
 
 all: setup attack-admin attack-writer remediate reattack
-
-# 'all' intentionally does NOT include reset or delete-repo. Run those
-# manually when you want to reset between takes or destroy the repo.

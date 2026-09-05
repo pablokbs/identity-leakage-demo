@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
-# 03-remediate.sh
-# Deletes the classic branch protection rule on main and installs a
-# repository Ruleset that enforces the same 1-review rule but with an
-# EMPTY bypass_actors list. The structural change: admins no longer
-# get a free pass.
-#
-# After this runs, ./03-attack-admin-ruleset.sh should be blocked.
+# Replace classic protection with a ruleset that has no bypass actors.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,15 +8,36 @@ source "$SCRIPT_DIR/lib.sh"
 # shellcheck source=00-config.sh
 source "$SCRIPT_DIR/00-config.sh"
 
-banner "03 — Remediate: classic protection -> Ruleset with empty bypass"
+parse_common_args "$@"
+set -- ${COMMON_ARGS[@]+"${COMMON_ARGS[@]}"}
+[[ $# -eq 0 ]] || die_l \
+  "unexpected argument: $1" \
+  "argumento inesperado: $1"
+
+banner "$(localized \
+  "03 — Remediate with a ruleset and least privilege" \
+  "03 — Remediar con ruleset y mínimo privilegio")"
 
 safety_gate
 
-note "removing classic branch protection on main"
-gh_api_no_body DELETE "/repos/$OWNER/$REPO/branches/main/protection" "$TEST_ORG_GH_TOKEN" \
-  || warn "classic protection was not set; continuing"
+section_l 1 "Explain the two-part fix" "Explicar el fix en dos partes"
+say_l \
+  "First, the ruleset removes the implicit Admin exemption by leaving its bypass actor list empty." \
+  "Primero, el ruleset elimina la excepción implícita de Admin dejando vacía la lista de bypass actors."
+say_l \
+  "Second, the token held by the agent has no Administration permission, so it cannot modify or delete this ruleset." \
+  "Segundo, el token que posee el agente no tiene permiso de Administration, por lo que no puede modificar ni eliminar este ruleset."
+show_link_l "$(branches_url "$OWNER" "$REPO")" \
+  "Inspect the classic rule before migration" \
+  "Ver la regla clásica antes de migrarla"
+present_pause_l
 
-note "creating repository ruleset: 1 review, no bypass actors"
+section_l 2 "Replace classic protection" "Reemplazar la protección clásica"
+remove_classic_protection "$OWNER" "$REPO" "$TEST_ORG_GH_TOKEN"
+note_l \
+  "Creating a repository ruleset: one review required, no bypass actors" \
+  "Creando un ruleset: una aprobación requerida, sin bypass actors"
+
 RULESET_BODY=$(jq -n '{
   name: "main-protection",
   target: "branch",
@@ -45,16 +60,29 @@ RULESET_BODY=$(jq -n '{
 
 RULESET_RESPONSE=$(gh_api POST "/repos/$OWNER/$REPO/rulesets" "$TEST_ORG_GH_TOKEN" \
   --data "$RULESET_BODY")
+RULESET_ID=$(printf '%s' "$RULESET_RESPONSE" | jq -r '.id // empty')
+[[ -n "$RULESET_ID" ]] || { printf '%s' "$RULESET_RESPONSE" | pp_json; die_l \
+  "could not create the ruleset" \
+  "no se pudo crear el ruleset"; }
 
-RULESET_ID=$(echo "$RULESET_RESPONSE" | jq -r '.id // empty')
-[[ -n "$RULESET_ID" ]] || { echo "$RULESET_RESPONSE" | pp_json; die "could not create ruleset"; }
+ok_l \
+  "ruleset $RULESET_ID is active on refs/heads/main" \
+  "el ruleset $RULESET_ID está activo sobre refs/heads/main"
 
-ok "ruleset $RULESET_ID installed for refs/heads/main"
-echo "$RULESET_RESPONSE" | pp_json
+section_l 3 "Verify the policy" "Verificar la política"
+RULESET_VERIFY=$(gh_api GET "/repos/$OWNER/$REPO/rulesets/$RULESET_ID" "$TEST_ORG_GH_TOKEN")
+printf '%s' "$RULESET_VERIFY" | jq '{name, enforcement, target, bypass_actors, rules}' | pp_json
 echo ""
-note "verify there are no bypass actors:"
-gh_api GET "/repos/$OWNER/$REPO/rulesets/$RULESET_ID" "$TEST_ORG_GH_TOKEN" \
-  | jq '.bypass_actors' | pp_json
-echo ""
-ok "remediation complete"
-echo "  next: ./03-attack-admin-ruleset.sh"
+ok_l \
+  "bypass_actors is empty: the Admin identity is no longer exempt" \
+  "bypass_actors está vacío: la identidad Admin ya no está exceptuada"
+show_link_l "$(rules_settings_url "$OWNER" "$REPO")" \
+  "Open ruleset settings" \
+  "Abrir la configuración de rulesets"
+show_link_l "$(effective_rules_url "$OWNER" "$REPO")" \
+  "Open the effective rules for main" \
+  "Abrir las reglas efectivas sobre main"
+present_pause_l
+
+ok_l "remediation complete" "remediación completa"
+show_next_l "make reattack"

@@ -12,25 +12,44 @@ source "$SCRIPT_DIR/lib.sh"
 # shellcheck source=00-config.sh
 source "$SCRIPT_DIR/00-config.sh"
 
-banner "99 — Delete repository"
+parse_common_args "$@"
+set -- ${COMMON_ARGS[@]+"${COMMON_ARGS[@]}"}
+[[ $# -eq 0 ]] || die_l "unexpected argument: $1" "argumento inesperado: $1"
+
+banner "$(localized "99 — Permanently delete repository" "99 — Eliminar permanentemente el repositorio")"
 
 safety_gate
 
-note "this will permanently delete $OWNER/$REPO"
+note_l \
+  "This will permanently delete $OWNER/$REPO" \
+  "Esto eliminará permanentemente $OWNER/$REPO"
 echo ""
-echo "    repository: $OWNER/$REPO"
-echo "    branch protection rules: also gone"
-echo "    rulesets: also gone"
-echo "    pull requests: also gone"
+if [[ "$DEMO_LANG" == "es" ]]; then
+  echo "    repositorio: $OWNER/$REPO"
+  echo "    branch protection: también será eliminada"
+  echo "    rulesets: también serán eliminados"
+  echo "    pull requests: también serán eliminados"
+else
+  echo "    repository: $OWNER/$REPO"
+  echo "    branch protection: also deleted"
+  echo "    rulesets: also deleted"
+  echo "    pull requests: also deleted"
+fi
 echo ""
-echo "  Are you sure? Type the word DELETE (uppercase) to continue."
-echo "  Press Enter alone to abort."
+say_l \
+  "  Are you sure? Type DELETE (uppercase) to continue." \
+  "  ¿Estás seguro? Escribí DELETE en mayúsculas para continuar."
+say_l \
+  "  Press Enter alone to abort." \
+  "  Presioná solamente Enter para cancelar."
 echo ""
 
 read -r -p "  > " CONFIRM
-[[ "$CONFIRM" == "DELETE" ]] || { warn "aborted by user"; exit 0; }
+[[ "$CONFIRM" == "DELETE" ]] || { warn_l "aborted by user" "cancelado por el usuario"; exit 0; }
 
 delete_repo_safe "$OWNER" "$REPO" "$TEST_ORG_GH_TOKEN"
-ok "$OWNER/$REPO deleted"
+ok_l "$OWNER/$REPO deleted" "$OWNER/$REPO eliminado"
 
-note "repo destroyed. To recreate: ./01-setup.sh"
+note_l \
+  "Repository destroyed. Recreate and initialize it manually before setup." \
+  "Repositorio eliminado. Crealo e inicializalo manualmente antes del setup."
