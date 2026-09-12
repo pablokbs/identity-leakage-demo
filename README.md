@@ -2,6 +2,10 @@
 
 Live demo for **“When the Agent Lost Its Patience: Securing Cloud-Native AI Workflows Against Identity Leakage.”**
 
+Slides:
+
+* F13 Conference (Lima, Perú) [SpeakerDeck Link](https://speakerdeck.com/pablokbs/cuando-el-agente-perdio-la-paciencia-f13)
+
 The demo shows that token permissions and identity permissions are separate inputs to authorization:
 
 - A narrow token owned by a repository **Admin** can merge an unapproved PR when classic branch protection implicitly exempts administrators.
