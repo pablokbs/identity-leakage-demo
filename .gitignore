@@ -1,3 +1,4 @@
 00-config.sh
 *.log
 .DS_Store
+.env
