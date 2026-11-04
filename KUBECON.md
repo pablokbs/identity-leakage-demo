@@ -134,7 +134,7 @@ Hugging Face's July 27 technical timeline describes the intrusion from the defen
 
 Bort and this incident involved different mechanisms and scales. The connection is a platform engineering question: **what can an agent actually reach when it keeps searching for another way to finish a task?** These cases support concrete work on authorization and isolation; they do not, by themselves, establish an intention to destroy humanity.
 
-Recommended video about the attack: [AI Just Crossed the Terrifying Line - Now What (Kuerzgesagt)](https://www.youtube.com/watch?v=ujkD4SxPKOI)  
+Recommended video about the attack: [AI Just Crossed the Terrifying Line - Now What (Kurzgesagt)](https://www.youtube.com/watch?v=ujkD4SxPKOI)  
 
 ## Ending with something worth building for: Paul and Rosie
 
