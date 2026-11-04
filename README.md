@@ -5,6 +5,8 @@ Live demo for **“When the Agent Lost Its Patience: Securing Cloud-Native AI Wo
 Slides:
 
 * F13 Conference (Lima, Perú) [SpeakerDeck Link](https://speakerdeck.com/pablokbs/cuando-el-agente-perdio-la-paciencia-f13)
+* Nerdearla 2026 (Buenos Aires, Argentina) [SpeakerDeck Link](https://speakerdeck.com/pablokbs/cuando-el-agente-perdio-la-paciencia-nerdearla-2026)
+* KubeCon North America 2026 (Utah, United States) [SpeakerDeck Link TBD](-)
 
 The demo shows that token permissions and identity permissions are separate inputs to authorization:
 
