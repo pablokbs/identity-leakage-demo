@@ -7,8 +7,8 @@ export DEMO_LANG DEMO_PRESENT
 ifeq ($(DEMO_LANG),es)
 HELP_TITLE = Demo de Identity Leakage - comandos
 HELP_SETUP = Preparar protección clásica y un PR sin aprobación.
-HELP_ADMIN = Ejecutar el ataque con la identidad Admin.
-HELP_WRITER = Repetir el ataque con la identidad Writer.
+HELP_WRITER = El Writer intenta mergear el PR sin aprobación y es bloqueado.
+HELP_ADMIN = El Admin comenta y mergea ese mismo PR.
 HELP_REMEDIATE = Migrar a un ruleset sin bypass actors.
 HELP_REATTACK = Repetir el ataque Admin bajo el ruleset.
 HELP_RESET = Limpiar el estado sin eliminar el repositorio.
@@ -20,8 +20,8 @@ HELP_PRESENT = Pausas: DEMO_PRESENT=1 o --present al ejecutar un script.
 else
 HELP_TITLE = Identity Leakage Demo - commands
 HELP_SETUP = Prepare classic protection and an unapproved PR.
-HELP_ADMIN = Run the attack with the Admin identity.
-HELP_WRITER = Repeat the attack with the Writer identity.
+HELP_WRITER = Writer tries to merge the unapproved PR and is blocked.
+HELP_ADMIN = Admin comments and merges that same PR.
 HELP_REMEDIATE = Migrate to a ruleset with no bypass actors.
 HELP_REATTACK = Repeat the Admin attack under the ruleset.
 HELP_RESET = Clean demo state without deleting the repository.
@@ -36,8 +36,8 @@ help:
 	@echo "$(HELP_TITLE)"
 	@echo ""
 	@echo "  make setup          $(HELP_SETUP)"
-	@echo "  make attack-admin   $(HELP_ADMIN)"
 	@echo "  make attack-writer  $(HELP_WRITER)"
+	@echo "  make attack-admin   $(HELP_ADMIN)"
 	@echo "  make remediate      $(HELP_REMEDIATE)"
 	@echo "  make reattack       $(HELP_REATTACK)"
 	@echo "  make reset          $(HELP_RESET)"
@@ -49,8 +49,8 @@ help:
 	@echo ""
 	@echo "$(HELP_FLOW):"
 	@echo "  make DEMO_LANG=$(DEMO_LANG) DEMO_PRESENT=1 setup"
-	@echo "  make DEMO_LANG=$(DEMO_LANG) DEMO_PRESENT=1 attack-admin"
 	@echo "  make DEMO_LANG=$(DEMO_LANG) DEMO_PRESENT=1 attack-writer"
+	@echo "  make DEMO_LANG=$(DEMO_LANG) DEMO_PRESENT=1 attack-admin"
 	@echo "  make DEMO_LANG=$(DEMO_LANG) DEMO_PRESENT=1 remediate"
 	@echo "  make DEMO_LANG=$(DEMO_LANG) DEMO_PRESENT=1 reattack"
 	@echo "  make DEMO_LANG=$(DEMO_LANG) reset"
@@ -88,4 +88,4 @@ clean:
 	rm -f /tmp/_gh_body.* ./*.log
 	@echo "local temporary files removed"
 
-all: setup attack-admin attack-writer remediate reattack
+all: setup attack-writer attack-admin remediate reattack

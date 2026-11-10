@@ -21,26 +21,35 @@ banner "$(localized \
 safety_gate
 require_bin gh
 
+ADMIN_COMMENT="I'm an admin but I couldn't merge because of the rulesets."
+
 if [[ $# -eq 1 ]]; then
   PR_NUMBER="$1"
 else
   PR_NUMBER=$(gh_api GET "/repos/$OWNER/$REPO/pulls?state=open" "$TEST_ORG_GH_TOKEN" \
     | jq -r '[.[] | select(.head.ref | startswith("demo/"))][0].number // empty')
-  [[ -n "$PR_NUMBER" ]] || die_l \
-    "no open demo PR found; run the previous steps first" \
-    "no hay un PR abierto para la demo; ejecutá primero los pasos anteriores"
+fi
+
+if [[ -z "${PR_NUMBER:-}" ]]; then
+  say_l \
+    "The previous PR was already merged. A fresh unapproved PR is opened so the same Admin merge can be repeated under the ruleset." \
+    "El PR anterior ya fue mergeado. Se abre un PR nuevo y sin aprobación para repetir el mismo merge Admin bajo el ruleset."
+  create_demo_pr "$OWNER" "$REPO" "$TEST_ORG_GH_TOKEN" "demo/ruleset-reattack"
+  PR_NUMBER="$DEMO_PR_NUMBER"
+  wait_for_pr "$OWNER" "$REPO" "$PR_NUMBER" "$TEST_ORG_GH_TOKEN"
+  ok_l "PR #$PR_NUMBER is open" "el PR #$PR_NUMBER está abierto"
 fi
 
 section_l 1 "Hold every variable constant" "Mantener constantes todas las variables"
 say_l \
-  "This is the same Admin identity and the same narrow token that succeeded under classic protection." \
-  "Esta es la misma identidad Admin y el mismo token limitado que funcionaron con la protección clásica."
+  "This is the same Admin identity and the same narrow token that merged the previous PR under classic protection." \
+  "Esta es la misma identidad Admin y el mismo token limitado que mergearon el PR anterior con la protección clásica."
 say_l \
   "The token can update contents and pull requests, but it cannot administer the repository or remove the ruleset." \
   "El token puede actualizar contenido y pull requests, pero no puede administrar el repositorio ni eliminar el ruleset."
 say_l \
-  "The only relevant policy change is the active ruleset with an empty bypass actor list." \
-  "El único cambio relevante de política es el ruleset activo con la lista de bypass actors vacía."
+  "The relevant change is the active ruleset with an empty bypass actor list. This PR has no approval." \
+  "El cambio relevante es el ruleset activo con la lista de bypass actors vacía. Este PR no tiene aprobación."
 show_link_l "$(effective_rules_url "$OWNER" "$REPO")" \
   "Inspect the effective rules for main" \
   "Ver las reglas efectivas sobre main"
@@ -82,6 +91,22 @@ show_link_l "$(pr_url "$OWNER" "$REPO" "$PR_NUMBER")" \
 [[ "$RESULT" == "blocked" ]] || die_l \
   "Admin re-attack was not blocked as expected" \
   "el reataque Admin no fue bloqueado como se esperaba"
+
+section_l 3 "Leave the failure on the PR" "Dejar el fallo en el PR"
+say_l \
+  "The Admin account comments on the same PR. The ruleset blocked the merge, and the token still cannot change that rule." \
+  "La cuenta Admin comenta en el mismo PR. El ruleset bloqueó el merge, y el token sigue sin poder cambiar esa regla."
+echo ""
+echo "  ${BOLD}${ADMIN_COMMENT}${RESET}"
+echo ""
+post_pr_comment "$OWNER" "$REPO" "$PR_NUMBER" "$ADMIN_TOKEN" "$ADMIN_COMMENT"
+ok_l \
+  "comment posted as $ADMIN_HANDLE" \
+  "comentario publicado como $ADMIN_HANDLE"
+show_link_l "$(pr_url "$OWNER" "$REPO" "$PR_NUMBER")" \
+  "Open the PR and read the Admin comment" \
+  "Abrir el PR y leer el comentario del Admin"
+present_pause_l
 
 echo ""
 ok_l \
