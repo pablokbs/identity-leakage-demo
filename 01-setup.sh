@@ -82,8 +82,35 @@ wait_for_pr "$OWNER" "$REPO" "$PR_NUMBER" "$TEST_ORG_GH_TOKEN"
 
 ok_l "PR #$PR_NUMBER is open on branch $BRANCH" "el PR #$PR_NUMBER está abierto desde la rama $BRANCH"
 note_l \
-  "The PR is intentionally NOT approved. The classic rule should stop ordinary writers, but not an exempt Admin identity." \
-  "El PR está intencionalmente SIN aprobar. La regla clásica debería frenar a un Writer, pero no a una identidad Admin exceptuada."
+  "The PR is intentionally NOT approved. Writer tries to merge it first and should be blocked. Admin then tries the same PR." \
+  "El PR está intencionalmente SIN aprobar. Primero lo intenta el Writer y debería ser bloqueado. Después el Admin intenta el mismo PR."
+
+section_l 5 "Show the role the UI hides" "Mostrar el rol que la UI no muestra"
+say_l \
+  "Both accounts appear as collaborators. The role that authorizes the bypass is on the permission API, not on the token." \
+  "Ambas cuentas figuran como collaborators. El rol que autoriza el bypass está en la API de permisos, no en el token."
+require_bin gh
+
+show_collaborator_role() {
+  local handle="$1" expected="$2"
+  local path="/repos/$OWNER/$REPO/collaborators/$handle/permission"
+  local body role
+  echo ""
+  echo "  gh api ${path} --jq '{login: .user.login, role_name, permission}'"
+  echo ""
+  body=$(GH_TOKEN="$TEST_ORG_GH_TOKEN" gh api "$path" \
+    --jq '{login: .user.login, role_name, permission}')
+  printf '%s\n' "$body" | sed 's/^/  /'
+  role=$(printf '%s' "$body" | jq -r '.role_name')
+  [[ "$role" == "$expected" ]] || die_l \
+    "$handle has role '$role'; expected '$expected'" \
+    "$handle tiene rol '$role'; se esperaba '$expected'"
+  ok_l "$handle is $role" "$handle es $role"
+}
+
+show_collaborator_role "$ADMIN_HANDLE" admin
+show_collaborator_role "$WRITER_HANDLE" write
+present_pause_l
 
 echo ""
 ok_l "setup complete" "setup completo"
@@ -93,4 +120,4 @@ echo "  PR:     #$PR_NUMBER"
 show_link_l "$(pr_url "$OWNER" "$REPO" "$PR_NUMBER")" \
   "Open the unapproved PR in GitHub" \
   "Abrir el PR sin aprobación en GitHub"
-show_next_l "make attack-admin"
+show_next_l "make attack-writer"

@@ -434,6 +434,15 @@ create_demo_pr() {
     "no se pudo crear el PR de la demo"
 }
 
+# Comment on a pull request as the user who owns the token.
+post_pr_comment() {
+  local owner="$1" repo="$2" number="$3" token="$4" body="$5"
+  local payload
+  payload=$(jq -n --arg body "$body" '{body:$body}')
+  gh_api POST "/repos/$owner/$repo/issues/$number/comments" "$token" \
+    --data "$payload" >/dev/null
+}
+
 # Apply the classic branch protection rule used throughout the demo:
 # one required review with enforce_admins=false, so Admin identities are not
 # subject to the rule when they update the protected branch.

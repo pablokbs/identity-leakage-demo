@@ -79,8 +79,8 @@ Run each command separately:
 
 ```bash
 make DEMO_LANG=es DEMO_PRESENT=1 setup
-make DEMO_LANG=es DEMO_PRESENT=1 attack-admin
 make DEMO_LANG=es DEMO_PRESENT=1 attack-writer
+make DEMO_LANG=es DEMO_PRESENT=1 attack-admin
 make DEMO_LANG=es DEMO_PRESENT=1 remediate
 make DEMO_LANG=es DEMO_PRESENT=1 reattack
 make DEMO_LANG=es reset
@@ -91,10 +91,10 @@ The flow is intentionally staged:
 | Step | What happens | GitHub UI checkpoint |
 | --- | --- | --- |
 | Setup | Verify the reusable repo and collaborators, apply classic protection, open an unapproved PR | Access, branch settings, PR |
-| Admin attack | Admin token merges without approval; classic protection remains configured | PR and branch settings |
-| Writer comparison | A fresh equivalent PR is rejected for the Writer identity | Open blocked PR |
+| Writer attempt | The Writer token is rejected on that PR and comments that it could not merge | Open PR and Writer comment |
+| Admin attack | The Admin identity comments that tests are green, then merges the same PR without approval; classic protection remains configured | Both comments, merged PR, branch settings |
 | Remediation | Replace classic protection with a no-bypass ruleset | Ruleset settings and effective rules |
-| Admin re-attack | The exact same `gh pr merge --admin` operation is rejected; the token cannot change the ruleset | Effective rules and blocked PR |
+| Admin re-attack | A fresh unapproved PR is rejected by the same `gh pr merge --admin` operation; the Admin comments that the ruleset blocked it, and the token cannot change the ruleset | Effective rules, blocked PR, and Admin comment |
 | Cleanup | Close PRs, delete `demo/*` branches, and remove demo protections while preserving the repo and collaborators | Repository home |
 
 `make all` is useful for automation. For a talk, use the individual commands so you control every pause.
